@@ -1,6 +1,6 @@
 # ==========================================
 # gradcam.py
-# Grad-CAM for DenseNet121
+# Generate Grad-CAM Visualizations
 # ==========================================
 
 import os
@@ -10,19 +10,65 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 
 from tensorflow.keras.models import load_model
-from tensorflow.keras.applications.densenet import preprocess_input
 
 # ==========================================
-# CONFIG
+# CONFIGURATION
 # ==========================================
 
-MODEL_PATH = "models/DenseNet121_BreakHis.keras"
+MODEL_NAME = "DenseNet121"
 
-IMAGE_PATH = "sample_image.png"   # Replace with test image
+IMAGE_PATH = "sample_image.png"
+
+MODEL_CONFIG = {
+
+    "DenseNet121": {
+        "model_path": "models/DenseNet121_BreakHis.keras",
+        "last_conv_layer": "conv5_block16_concat"
+    },
+
+    "ResNet50": {
+        "model_path": "models/ResNet50_BreakHis.keras",
+        "last_conv_layer": "conv5_block3_out"
+    },
+
+    "EfficientNetB0": {
+        "model_path": "models/EfficientNetB0_BreakHis.keras",
+        "last_conv_layer": "top_activation"
+    },
+
+    "VGG16": {
+        "model_path": "models/VGG16_BreakHis.keras",
+        "last_conv_layer": "block5_conv3"
+    },
+
+    "MobileNetV2": {
+        "model_path": "models/MobileNetV2_BreakHis.keras",
+        "last_conv_layer": "out_relu"
+    }
+}
+
+# ==========================================
+# VALIDATE MODEL
+# ==========================================
+
+if MODEL_NAME not in MODEL_CONFIG:
+    raise ValueError(
+        f"Unsupported model: {MODEL_NAME}"
+    )
+
+MODEL_PATH = MODEL_CONFIG[
+    MODEL_NAME
+]["model_path"]
+
+LAST_CONV_LAYER = MODEL_CONFIG[
+    MODEL_NAME
+]["last_conv_layer"]
+
+# ==========================================
+# CREATE OUTPUT DIRECTORY
+# ==========================================
 
 OUTPUT_DIR = "gradcam"
-
-LAST_CONV_LAYER = "conv5_block16_concat"
 
 os.makedirs(
     OUTPUT_DIR,
@@ -33,13 +79,15 @@ os.makedirs(
 # LOAD MODEL
 # ==========================================
 
-print("Loading model...")
+print(
+    f"Loading {MODEL_NAME}..."
+)
 
 model = load_model(
     MODEL_PATH
 )
 
-print("Model loaded successfully.")
+print("Model loaded.")
 
 # ==========================================
 # LOAD IMAGE
@@ -68,11 +116,7 @@ img_resized = cv2.resize(
 input_image = np.expand_dims(
     img_resized,
     axis=0
-)
-
-input_image = preprocess_input(
-    input_image.astype(np.float32)
-)
+).astype(np.float32)
 
 # ==========================================
 # CREATE GRAD MODEL
@@ -105,6 +149,10 @@ grads = tape.gradient(
     conv_outputs
 )
 
+# ==========================================
+# CREATE HEATMAP
+# ==========================================
+
 pooled_grads = tf.reduce_mean(
     grads,
     axis=(0,1,2)
@@ -112,31 +160,19 @@ pooled_grads = tf.reduce_mean(
 
 conv_outputs = conv_outputs[0]
 
-pooled_grads = pooled_grads.numpy()
-
-# ==========================================
-# CREATE HEATMAP
-# ==========================================
-
-heatmap = np.zeros(
-    conv_outputs.shape[:2]
+heatmap = tf.reduce_sum(
+    pooled_grads * conv_outputs,
+    axis=-1
 )
 
-for i in range(
-    pooled_grads.shape[0]
-):
-
-    heatmap += (
-        pooled_grads[i]
-        * conv_outputs[:,:,i]
-    )
+heatmap = heatmap.numpy()
 
 heatmap = np.maximum(
     heatmap,
     0
 )
 
-heatmap /= (
+heatmap = heatmap / (
     np.max(heatmap) + 1e-8
 )
 
@@ -179,6 +215,29 @@ overlay = cv2.addWeighted(
 )
 
 # ==========================================
+# PREDICTION
+# ==========================================
+
+prediction = model.predict(
+    input_image,
+    verbose=0
+)[0][0]
+
+predicted_class = (
+    "Malignant"
+    if prediction > 0.5
+    else "Benign"
+)
+
+print(
+    f"Prediction Score: {prediction:.4f}"
+)
+
+print(
+    f"Predicted Class: {predicted_class}"
+)
+
+# ==========================================
 # DISPLAY
 # ==========================================
 
@@ -196,7 +255,9 @@ plt.axis("off")
 
 plt.subplot(1,3,3)
 plt.imshow(overlay)
-plt.title("Grad-CAM Overlay")
+plt.title(
+    f"{MODEL_NAME} Grad-CAM"
+)
 plt.axis("off")
 
 plt.tight_layout()
@@ -207,7 +268,7 @@ plt.tight_layout()
 
 save_path = os.path.join(
     OUTPUT_DIR,
-    "DenseNet121_GradCAM.png"
+    f"{MODEL_NAME}_GradCAM.png"
 )
 
 plt.savefig(
@@ -219,25 +280,5 @@ plt.savefig(
 plt.show()
 
 print(
-    f"\nGrad-CAM saved to: {save_path}"
+    f"\nSaved: {save_path}"
 )
-
-# ==========================================
-# PREDICTION
-# ==========================================
-
-prediction = model.predict(
-    input_image
-)[0][0]
-
-print(
-    f"\nPrediction Score: {prediction:.4f}"
-)
-
-if prediction > 0.5:
-
-    print("Predicted Class: Malignant")
-
-else:
-
-    print("Predicted Class: Benign")
