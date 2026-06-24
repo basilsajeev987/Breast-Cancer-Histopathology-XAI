@@ -1,6 +1,6 @@
 # ==========================================
 # evaluate_models.py
-# Compare All BreakHis Models
+# BreakHis Model Comparison
 # ==========================================
 
 import os
@@ -8,27 +8,31 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # ==========================================
-# CONFIG
+# PATHS
 # ==========================================
 
 RESULTS_DIR = "results"
 
 # ==========================================
-# LOAD ALL RESULT FILES
+# RESULT FILES
 # ==========================================
 
 result_files = [
 
-    "MobileNetV2_results.csv",
+    "DenseNet121_results.csv",
 
     "ResNet50_results.csv",
 
+    "EfficientNetB0_results.csv",
+
     "VGG16_results.csv",
 
-    "DenseNet121_results.csv",
-
-    "EfficientNetB0_results.csv"
+    "MobileNetV2_results.csv"
 ]
+
+# ==========================================
+# LOAD RESULTS
+# ==========================================
 
 all_results = []
 
@@ -41,20 +45,18 @@ for file in result_files:
 
     if os.path.exists(file_path):
 
-        df = pd.read_csv(
-            file_path
-        )
+        print(f"Loading: {file}")
+
+        df = pd.read_csv(file_path)
 
         all_results.append(df)
-
-        print(f"Loaded: {file}")
 
     else:
 
         print(f"Missing: {file}")
 
 # ==========================================
-# MERGE RESULTS
+# COMBINE RESULTS
 # ==========================================
 
 comparison_df = pd.concat(
@@ -62,142 +64,106 @@ comparison_df = pd.concat(
     ignore_index=True
 )
 
+# ==========================================
+# SORT BY ROC-AUC
+# ==========================================
+
 comparison_df = comparison_df.sort_values(
-    by="Accuracy",
+    by="ROC_AUC",
     ascending=False
 )
 
-# ==========================================
-# SAVE COMPARISON CSV
-# ==========================================
+print("\nFinal Comparison Table\n")
 
-comparison_csv = os.path.join(
-    RESULTS_DIR,
-    "Final_Model_Comparison.csv"
-)
+print(comparison_df)
+
+# ==========================================
+# SAVE FINAL TABLE
+# ==========================================
 
 comparison_df.to_csv(
-    comparison_csv,
+    os.path.join(
+        RESULTS_DIR,
+        "Final_Model_Comparison.csv"
+    ),
     index=False
 )
 
-print("\nFinal Comparison Table")
-print(comparison_df)
-
 print(
-    f"\nSaved:\n{comparison_csv}"
+    "\nSaved: Final_Model_Comparison.csv"
 )
 
 # ==========================================
-# ACCURACY CHART
+# CHART FUNCTION
 # ==========================================
 
-plt.figure(figsize=(8,5))
+def create_chart(metric):
 
-plt.bar(
-    comparison_df["Model"],
-    comparison_df["Accuracy"]
-)
+    plt.figure(figsize=(8,5))
 
-plt.title(
-    "Accuracy Comparison"
-)
+    plt.bar(
+        comparison_df["Model"],
+        comparison_df[metric]
+    )
 
-plt.ylabel(
+    plt.title(
+        f"{metric} Comparison"
+    )
+
+    plt.ylabel(metric)
+
+    plt.xticks(rotation=20)
+
+    plt.tight_layout()
+
+    plt.savefig(
+        os.path.join(
+            RESULTS_DIR,
+            f"{metric}_Comparison.png"
+        ),
+        dpi=300
+    )
+
+    plt.show()
+
+# ==========================================
+# ACCURACY
+# ==========================================
+
+create_chart(
     "Accuracy"
 )
 
-plt.xlabel(
-    "Model"
-)
+# ==========================================
+# PRECISION
+# ==========================================
 
-plt.xticks(
-    rotation=20
-)
-
-plt.tight_layout()
-
-accuracy_chart = os.path.join(
-    RESULTS_DIR,
-    "Accuracy_Comparison.png"
-)
-
-plt.savefig(
-    accuracy_chart,
-    dpi=300
-)
-
-plt.show()
-
-print(
-    f"\nSaved:\n{accuracy_chart}"
+create_chart(
+    "Precision"
 )
 
 # ==========================================
-# ROC-AUC CHART
+# RECALL
 # ==========================================
 
-plt.figure(figsize=(8,5))
-
-plt.bar(
-    comparison_df["Model"],
-    comparison_df["ROC_AUC"]
-)
-
-plt.title(
-    "ROC-AUC Comparison"
-)
-
-plt.ylabel(
-    "ROC-AUC"
-)
-
-plt.xlabel(
-    "Model"
-)
-
-plt.xticks(
-    rotation=20
-)
-
-plt.tight_layout()
-
-roc_chart = os.path.join(
-    RESULTS_DIR,
-    "ROC_AUC_Comparison.png"
-)
-
-plt.savefig(
-    roc_chart,
-    dpi=300
-)
-
-plt.show()
-
-print(
-    f"\nSaved:\n{roc_chart}"
+create_chart(
+    "Recall"
 )
 
 # ==========================================
-# PRINT BEST MODEL
+# F1 SCORE
 # ==========================================
 
-best_model = comparison_df.iloc[0]
-
-print("\n=================================")
-print("BEST MODEL")
-print("=================================")
-
-print(
-    f"Model     : {best_model['Model']}"
+create_chart(
+    "F1_Score"
 )
 
-print(
-    f"Accuracy  : {best_model['Accuracy']:.4f}"
+# ==========================================
+# ROC AUC
+# ==========================================
+
+create_chart(
+    "ROC_AUC"
 )
 
-print(
-    f"ROC_AUC   : {best_model['ROC_AUC']:.4f}"
-)
-
-print("=================================")
+print("\nAll charts generated successfully.")

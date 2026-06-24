@@ -1,41 +1,45 @@
 # ==========================================
 # train_densenet121.py
-# BreakHis Binary Classification using DenseNet121
+# BreakHis Binary Classification
 # ==========================================
 
 import os
 import time
 import pandas as pd
+import numpy as np
 
 from sklearn.metrics import (
-    classification_report,
-    roc_auc_score,
+    accuracy_score,
     precision_score,
     recall_score,
-    f1_score
+    f1_score,
+    roc_auc_score,
+    confusion_matrix,
+    classification_report
 )
 
 from tensorflow.keras.applications import DenseNet121
 from tensorflow.keras.applications.densenet import preprocess_input
 
-from tensorflow.keras.layers import (
-    Dense,
-    Dropout,
-    GlobalAveragePooling2D
-)
-
-from tensorflow.keras.models import Model
-
 from tensorflow.keras.preprocessing.image import (
     ImageDataGenerator
 )
 
+from tensorflow.keras.layers import (
+    GlobalAveragePooling2D,
+    Dropout,
+    Dense
+)
+
+from tensorflow.keras.models import Model
+
 from tensorflow.keras.callbacks import (
-    EarlyStopping
+    EarlyStopping,
+    ModelCheckpoint
 )
 
 # ==========================================
-# CONFIG
+# PATHS
 # ==========================================
 
 TRAIN_CSV = "data/train.csv"
@@ -45,12 +49,16 @@ TEST_CSV = "data/test.csv"
 MODEL_DIR = "models"
 RESULTS_DIR = "results"
 
+os.makedirs(MODEL_DIR, exist_ok=True)
+os.makedirs(RESULTS_DIR, exist_ok=True)
+
+# ==========================================
+# PARAMETERS
+# ==========================================
+
 IMG_SIZE = 224
 BATCH_SIZE = 32
 EPOCHS = 10
-
-os.makedirs(MODEL_DIR, exist_ok=True)
-os.makedirs(RESULTS_DIR, exist_ok=True)
 
 # ==========================================
 # LOAD DATA
@@ -63,16 +71,6 @@ test_df = pd.read_csv(TEST_CSV)
 for df in [train_df, val_df, test_df]:
 
     df["label"] = df["label"].astype(str)
-
-    df["image_path"] = (
-        df["image_path"]
-        .astype(str)
-        .str.replace("\\", "/", regex=False)
-    )
-
-print("\nTrain Samples:", len(train_df))
-print("Validation Samples:", len(val_df))
-print("Test Samples:", len(test_df))
 
 # ==========================================
 # DATA GENERATORS
@@ -92,7 +90,7 @@ test_datagen = ImageDataGenerator(
 )
 
 train_generator = train_datagen.flow_from_dataframe(
-    dataframe=train_df,
+    train_df,
     x_col="image_path",
     y_col="label",
     target_size=(IMG_SIZE, IMG_SIZE),
@@ -102,7 +100,7 @@ train_generator = train_datagen.flow_from_dataframe(
 )
 
 val_generator = test_datagen.flow_from_dataframe(
-    dataframe=val_df,
+    val_df,
     x_col="image_path",
     y_col="label",
     target_size=(IMG_SIZE, IMG_SIZE),
@@ -112,7 +110,7 @@ val_generator = test_datagen.flow_from_dataframe(
 )
 
 test_generator = test_datagen.flow_from_dataframe(
-    dataframe=test_df,
+    test_df,
     x_col="image_path",
     y_col="label",
     target_size=(IMG_SIZE, IMG_SIZE),
@@ -122,13 +120,13 @@ test_generator = test_datagen.flow_from_dataframe(
 )
 
 # ==========================================
-# BUILD MODEL
+# MODEL
 # ==========================================
 
 base_model = DenseNet121(
     weights="imagenet",
     include_top=False,
-    input_shape=(224, 224, 3)
+    input_shape=(224,224,3)
 )
 
 base_model.trainable = False
@@ -156,7 +154,7 @@ model.compile(
 model.summary()
 
 # ==========================================
-# TRAIN
+# CALLBACKS
 # ==========================================
 
 early_stop = EarlyStopping(
@@ -165,43 +163,55 @@ early_stop = EarlyStopping(
     restore_best_weights=True
 )
 
+checkpoint = ModelCheckpoint(
+    os.path.join(
+        MODEL_DIR,
+        "DenseNet121_BreakHis.keras"
+    ),
+    save_best_only=True,
+    monitor="val_accuracy"
+)
+
+# ==========================================
+# TRAIN
+# ==========================================
+
 print("\nTraining DenseNet121...")
 
-start_train = time.time()
+start_time = time.time()
 
 history = model.fit(
     train_generator,
     validation_data=val_generator,
     epochs=EPOCHS,
-    callbacks=[early_stop]
+    callbacks=[
+        early_stop,
+        checkpoint
+    ]
 )
 
-end_train = time.time()
-
-training_time = end_train - start_train
-
-print(
-    f"\nTraining Time: {training_time:.2f} seconds"
+training_time = (
+    time.time() - start_time
 )
 
 # ==========================================
 # EVALUATE
 # ==========================================
 
-test_loss, test_acc = model.evaluate(
-    test_generator,
-    verbose=1
-)
-
-predictions = model.predict(
+pred_probs = model.predict(
     test_generator
 )
 
 y_pred = (
-    predictions > 0.5
-).astype(int)
+    pred_probs > 0.5
+).astype(int).flatten()
 
 y_true = test_generator.classes
+
+accuracy = accuracy_score(
+    y_true,
+    y_pred
+)
 
 precision = precision_score(
     y_true,
@@ -218,10 +228,17 @@ f1 = f1_score(
     y_pred
 )
 
-roc = roc_auc_score(
+roc_auc = roc_auc_score(
     y_true,
-    predictions
+    pred_probs
 )
+
+cm = confusion_matrix(
+    y_true,
+    y_pred
+)
+
+tn, fp, fn, tp = cm.ravel()
 
 print("\nClassification Report\n")
 
@@ -232,61 +249,100 @@ print(
     )
 )
 
-print(f"Accuracy  : {test_acc:.4f}")
-print(f"Precision : {precision:.4f}")
-print(f"Recall    : {recall:.4f}")
-print(f"F1 Score  : {f1:.4f}")
-print(f"ROC AUC   : {roc:.4f}")
+print("\nConfusion Matrix")
 
-# ==========================================
-# SAVE MODEL
-# ==========================================
-
-model_path = os.path.join(
-    MODEL_DIR,
-    "DenseNet121_BreakHis.h5"
-)
-
-model.save(model_path)
-
-print(
-    f"\nModel saved to:\n{model_path}"
-)
+print(cm)
 
 # ==========================================
 # SAVE RESULTS
 # ==========================================
 
-results = pd.DataFrame({
+results_df = pd.DataFrame({
 
-    "Model": ["DenseNet121"],
+    "Model":["DenseNet121"],
 
-    "Accuracy": [test_acc],
+    "Accuracy":[accuracy],
 
-    "Precision": [precision],
+    "Precision":[precision],
 
-    "Recall": [recall],
+    "Recall":[recall],
 
-    "F1_Score": [f1],
+    "F1_Score":[f1],
 
-    "ROC_AUC": [roc],
+    "ROC_AUC":[roc_auc],
 
-    "Training_Time": [training_time]
+    "True_Negative":[tn],
+
+    "False_Positive":[fp],
+
+    "False_Negative":[fn],
+
+    "True_Positive":[tp],
+
+    "Training_Time":[training_time]
 
 })
 
-results_path = os.path.join(
-    RESULTS_DIR,
-    "DenseNet121_results.csv"
-)
-
-results.to_csv(
-    results_path,
+results_df.to_csv(
+    os.path.join(
+        RESULTS_DIR,
+        "DenseNet121_results.csv"
+    ),
     index=False
 )
 
-print(
-    f"\nResults saved to:\n{results_path}"
+# ==========================================
+# SAVE CONFUSION MATRIX
+# ==========================================
+
+cm_df = pd.DataFrame(
+    cm,
+    columns=[
+        "Pred_Benign",
+        "Pred_Malignant"
+    ],
+    index=[
+        "True_Benign",
+        "True_Malignant"
+    ]
 )
 
-print("\nDenseNet121 Training Completed Successfully.")
+cm_df.to_csv(
+    os.path.join(
+        RESULTS_DIR,
+        "DenseNet121_confusion_matrix.csv"
+    )
+)
+
+# ==========================================
+# SAVE HISTORY
+# ==========================================
+
+history_df = pd.DataFrame(
+    history.history
+)
+
+history_df.to_csv(
+    os.path.join(
+        RESULTS_DIR,
+        "DenseNet121_history.csv"
+    ),
+    index=False
+)
+
+print("\nResults Saved Successfully")
+print(
+    f"Accuracy : {accuracy:.4f}"
+)
+print(
+    f"Precision : {precision:.4f}"
+)
+print(
+    f"Recall : {recall:.4f}"
+)
+print(
+    f"F1 Score : {f1:.4f}"
+)
+print(
+    f"ROC AUC : {roc_auc:.4f}"
+)

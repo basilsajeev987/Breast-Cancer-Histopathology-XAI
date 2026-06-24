@@ -1,6 +1,6 @@
 # ==========================================
 # gradcam.py
-# Grad-CAM for BreakHis Models
+# Grad-CAM for DenseNet121
 # ==========================================
 
 import os
@@ -10,20 +10,19 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 
 from tensorflow.keras.models import load_model
+from tensorflow.keras.applications.densenet import preprocess_input
 
 # ==========================================
 # CONFIG
 # ==========================================
 
-MODEL_NAME = "DenseNet121"
+MODEL_PATH = "models/DenseNet121_BreakHis.keras"
 
-MODEL_PATH = "models/DenseNet121_BreakHis.h5"
-
-IMAGE_PATH = "sample_image.png"
-
-LAST_CONV_LAYER = "conv5_block16_concat"
+IMAGE_PATH = "sample_image.png"   # Replace with test image
 
 OUTPUT_DIR = "gradcam"
+
+LAST_CONV_LAYER = "conv5_block16_concat"
 
 os.makedirs(
     OUTPUT_DIR,
@@ -34,11 +33,13 @@ os.makedirs(
 # LOAD MODEL
 # ==========================================
 
+print("Loading model...")
+
 model = load_model(
     MODEL_PATH
 )
 
-print("Model Loaded")
+print("Model loaded successfully.")
 
 # ==========================================
 # LOAD IMAGE
@@ -50,8 +51,8 @@ img = cv2.imread(
 
 if img is None:
 
-    raise Exception(
-        f"Cannot read image:\n{IMAGE_PATH}"
+    raise FileNotFoundError(
+        f"Image not found: {IMAGE_PATH}"
     )
 
 img_rgb = cv2.cvtColor(
@@ -69,32 +70,8 @@ input_image = np.expand_dims(
     axis=0
 )
 
-input_image = tf.cast(
-    input_image,
-    tf.float32
-)
-
-# ==========================================
-# PREDICTION
-# ==========================================
-
-prediction = model.predict(
-    input_image,
-    verbose=0
-)[0][0]
-
-predicted_label = (
-    "Malignant"
-    if prediction > 0.5
-    else "Benign"
-)
-
-print(
-    f"Prediction Score: {prediction:.4f}"
-)
-
-print(
-    f"Predicted Class: {predicted_label}"
+input_image = preprocess_input(
+    input_image.astype(np.float32)
 )
 
 # ==========================================
@@ -133,7 +110,7 @@ pooled_grads = tf.reduce_mean(
     axis=(0,1,2)
 )
 
-conv_outputs = conv_outputs[0].numpy()
+conv_outputs = conv_outputs[0]
 
 pooled_grads = pooled_grads.numpy()
 
@@ -142,8 +119,7 @@ pooled_grads = pooled_grads.numpy()
 # ==========================================
 
 heatmap = np.zeros(
-    shape=conv_outputs.shape[:2],
-    dtype=np.float32
+    conv_outputs.shape[:2]
 )
 
 for i in range(
@@ -176,24 +152,6 @@ heatmap = cv2.resize(
     )
 )
 
-# ==========================================
-# SMOOTH HEATMAP
-# ==========================================
-
-heatmap = cv2.GaussianBlur(
-    heatmap,
-    (21,21),
-    0
-)
-
-heatmap /= (
-    heatmap.max() + 1e-8
-)
-
-# ==========================================
-# APPLY COLORMAP
-# ==========================================
-
 heatmap_uint8 = np.uint8(
     255 * heatmap
 )
@@ -214,9 +172,9 @@ heatmap_color = cv2.cvtColor(
 
 overlay = cv2.addWeighted(
     img_rgb,
-    0.75,
+    0.7,
     heatmap_color,
-    0.25,
+    0.3,
     0
 )
 
@@ -238,24 +196,22 @@ plt.axis("off")
 
 plt.subplot(1,3,3)
 plt.imshow(overlay)
-plt.title(
-    f"{MODEL_NAME}\n{predicted_label}\nConfidence={prediction:.4f}"
-)
+plt.title("Grad-CAM Overlay")
 plt.axis("off")
 
 plt.tight_layout()
 
 # ==========================================
-# SAVE
+# SAVE FIGURE
 # ==========================================
 
-output_path = os.path.join(
+save_path = os.path.join(
     OUTPUT_DIR,
-    f"GradCAM_{MODEL_NAME}.png"
+    "DenseNet121_GradCAM.png"
 )
 
 plt.savefig(
-    output_path,
+    save_path,
     dpi=300,
     bbox_inches="tight"
 )
@@ -263,5 +219,25 @@ plt.savefig(
 plt.show()
 
 print(
-    f"\nSaved:\n{output_path}"
+    f"\nGrad-CAM saved to: {save_path}"
 )
+
+# ==========================================
+# PREDICTION
+# ==========================================
+
+prediction = model.predict(
+    input_image
+)[0][0]
+
+print(
+    f"\nPrediction Score: {prediction:.4f}"
+)
+
+if prediction > 0.5:
+
+    print("Predicted Class: Malignant")
+
+else:
+
+    print("Predicted Class: Benign")

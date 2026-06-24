@@ -1,0 +1,2 @@
+Model,Accuracy,Precision,Recall,F1_Score,ROC_AUC,True_Negative,False_Positive,False_Negative,True_Positive,Training_Time
+EfficientNetB0,0.5347901092581944,0.5347901092581944,1.0,0.6968902210565755,0.6301028749152677,0,1618,0,1860,634.7807366847992
