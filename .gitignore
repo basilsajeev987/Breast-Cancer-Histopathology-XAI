@@ -1,0 +1,14 @@
+# Dataset
+dataset_cancer_v1/
+*.zip
+
+# Python
+__pycache__/
+*.pyc
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
