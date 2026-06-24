@@ -210,17 +210,6 @@ Experiments were originally conducted using Google Colab with GPU acceleration.
 The repository contains a refactored Python implementation together with notebooks documenting the experimental workflow.
 
 A patient-level stratified split was used to ensure reliable and reproducible evaluation.
-
----
-
-## Future Work
-
-* Multi-class breast cancer subtype classification
-* Vision Transformer (ViT) architectures
-* Ensemble learning approaches
-* Advanced explainability methods
-* Clinical deployment studies
-
 ---
 
 ## Author
